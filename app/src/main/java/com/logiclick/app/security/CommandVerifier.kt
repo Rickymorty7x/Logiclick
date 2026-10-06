@@ -7,6 +7,11 @@ import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
 
 object CommandVerifier {
+    fun isValidPublicKey(publicKeyBase64: String): Boolean = runCatching {
+        val keyBytes = Base64.decode(publicKeyBase64, Base64.DEFAULT)
+        KeyFactory.getInstance("Ed25519").generatePublic(X509EncodedKeySpec(keyBytes))
+    }.isSuccess
+
     fun verify(command: ApiCommand, publicKeyBase64: String): Boolean = runCatching {
         val keyBytes = Base64.decode(publicKeyBase64, Base64.DEFAULT)
         val publicKey = KeyFactory.getInstance("Ed25519")

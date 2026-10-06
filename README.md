@@ -11,6 +11,15 @@ Logiclick is a native Android 11+ proof of concept for a narrow, user-configured
 
 It intentionally does **not** provide arbitrary remote coordinates, scripts, hidden execution, rapid-fire tapping, CAPTCHA handling, security-prompt interaction, or anti-bot evasion.
 
+## Production-preview safeguards
+
+- A persistent low-priority notification clearly shows when automation is armed and includes a one-tap **Stop** action.
+- The app records a local 30-entry activity history without storing entered numbers or captured screen content.
+- API failures use exponential retry backoff up to one minute rather than continuously polling.
+- API settings reject non-HTTPS endpoints, embedded URL credentials, and malformed Ed25519 keys.
+- The foreground package is rechecked before input, typing, and the final action.
+- Commands remain serialized, short-lived, signed, and replay-protected.
+
 ## Current workflow editor
 
 After enabling Logiclick in Android Accessibility settings:

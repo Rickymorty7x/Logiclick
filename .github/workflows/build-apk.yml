@@ -21,7 +21,7 @@ jobs:
           java-version: "17"
 
       - name: Install Android platform
-        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+        run: /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;35.0.0"
 
       - name: Set up Gradle 8.13
         uses: gradle/actions/setup-gradle@v4

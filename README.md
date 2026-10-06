@@ -77,3 +77,11 @@ The bundled ML Kit Latin text-recognition model works offline after installation
 - Secure windows can block screenshots.
 - `ACTION_SET_TEXT` requires the marked target to expose an editable accessibility node. Custom-rendered fields may need a separately disclosed input method.
 - Google Play requires an Accessibility API declaration, prominent disclosure and consent. Automation must stay narrow and deterministic.
+
+### Supported GoPass package IDs
+
+- Dallas/DART GoPass: `dk.unwire.projects.dart`
+- Colombia Gopass: `com.kubo.go_pass`
+- Gopass.travel: `gopass.travel.mobile`
+
+Android package visibility is limited to these declared targets rather than requesting access to the complete installed-app list.

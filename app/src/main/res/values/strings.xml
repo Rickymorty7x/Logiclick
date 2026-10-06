@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Logiclick</string>
+    <string name="accessibility_description">Runs only user-created, signed and allowlisted OCR workflows.</string>
+</resources>

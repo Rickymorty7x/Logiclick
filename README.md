@@ -326,7 +326,7 @@ Repository QR:
 
 ![Logiclick GitHub repository QR code](docs/logiclick-github-qr.png)
 
-Direct APK download QR (GitHub login is required because the repository is private):
+Direct public APK download QR:
 
 ![Logiclick Android APK QR code](docs/logiclick-apk-qr.png)
 

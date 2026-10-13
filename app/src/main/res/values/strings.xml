@@ -1,4 +1,4 @@
 <resources>
     <string name="app_name">Logiclick</string>
-    <string name="accessibility_description">Runs only user-created, signed and allowlisted OCR workflows.</string>
+    <string name="accessibility_description">Performs signed remote gestures while visibly enabled by the device owner. It cannot read passwords or interact with security and permission screens.</string>
 </resources>

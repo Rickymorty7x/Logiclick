@@ -2,28 +2,21 @@ package com.logiclick.app.automation
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
-import android.accessibilityservice.AccessibilityService.ScreenshotResult
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.ColorSpace
 import android.graphics.Path
-import android.hardware.HardwareBuffer
-import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.view.Display
 import android.view.accessibility.AccessibilityEvent
-import android.view.accessibility.AccessibilityNodeInfo
-import com.logiclick.app.data.ConfigStore
 import com.logiclick.app.MainActivity
+import com.logiclick.app.data.ConfigStore
 import com.logiclick.app.model.ApiCommand
-import com.logiclick.app.model.NormalizedPoint
-import com.logiclick.app.model.WorkflowConfig
+import com.logiclick.app.model.CoordinateArea
+import com.logiclick.app.model.RemoteAction
 import com.logiclick.app.network.CommandApi
 import com.logiclick.app.security.CommandVerifier
 import java.util.concurrent.Executors
@@ -57,19 +50,20 @@ class LogiclickAccessibilityService : AccessibilityService() {
         super.onDestroy()
     }
 
-    private fun schedulePoll(delayMs: Long = 3_000) {
-        main.postDelayed({ pollOnce() }, delayMs)
+    private fun schedulePoll(delayMs: Long = 1_000) {
+        main.postDelayed(::pollOnce, delayMs)
     }
 
     private fun pollOnce() {
         updateArmedNotification()
-        if (polling || busy || !store.armed || store.endpoint.isBlank()) {
-            schedulePoll(if (store.armed) 3_000 else 1_000)
+        val missingBuiltInCredentials = !store.directEndpoint && store.deviceToken.isBlank()
+        if (polling || busy || !store.armed || store.endpoint.isBlank() || missingBuiltInCredentials) {
+            schedulePoll(if (store.armed) 1_000 else 2_000)
             return
         }
         polling = true
         network.execute {
-            val result = CommandApi.fetch(store.endpoint)
+            val result = CommandApi.fetch(store.endpoint, store.deviceId, store.deviceToken, store.directEndpoint)
             main.post {
                 polling = false
                 result.fold(
@@ -77,15 +71,14 @@ class LogiclickAccessibilityService : AccessibilityService() {
                         if (consecutiveApiFailures > 0) store.appendLog("API connection restored")
                         consecutiveApiFailures = 0
                         command?.let(::acceptCommand)
-                        schedulePoll()
+                        if (!busy) schedulePoll()
                     },
                     onFailure = { error ->
                         consecutiveApiFailures += 1
                         if (consecutiveApiFailures == 1 || consecutiveApiFailures % 5 == 0) {
                             store.appendLog("API unavailable: ${error.message ?: "connection error"}")
                         }
-                        val backoff = (3_000L * (1L shl minOf(consecutiveApiFailures, 4)))
-                            .coerceAtMost(60_000L)
+                        val backoff = (2_000L * (1L shl minOf(consecutiveApiFailures, 5))).coerceAtMost(60_000L)
                         schedulePoll(backoff)
                     }
                 )
@@ -94,96 +87,57 @@ class LogiclickAccessibilityService : AccessibilityService() {
     }
 
     private fun acceptCommand(command: ApiCommand) {
-        val config = store.workflow ?: run {
-            store.appendLog("Rejected command: no workflow configured")
-            return
-        }
         if (busy) return
         command.basicValidation()?.let {
             store.appendLog("Rejected command: $it")
             return
         }
-        if (command.workflowName != config.name) return
         if (store.hasSeen(command.commandId)) return
         if (!CommandVerifier.verify(command, store.publicKeyBase64)) {
             store.appendLog("Rejected command: invalid signature")
             return
         }
-        if (!isTargetActive(config)) return
 
         store.markSeen(command.commandId)
         busy = true
-        store.appendLog("Command accepted: ${command.commandId.take(24)}")
-        capture { captureResult ->
-            captureResult.fold(
-                onSuccess = { bitmap -> inspectThenRun(bitmap, config, command) },
-                onFailure = { finish(false, "Screenshot failed") }
-            )
+        store.appendLog("Accepted ${command.commandId.take(24)}")
+        when (val action = command.action) {
+            is RemoteAction.Gesture -> performGesture(action) { finish(it, if (it) "Gesture completed" else "Gesture cancelled") }
+            is RemoteAction.Global -> finish(performGlobal(action.name), "Global action ${action.name}")
+            is RemoteAction.LaunchApp -> finish(launchApp(action.packageName), "Launch ${action.packageName}")
         }
     }
 
-    private fun inspectThenRun(bitmap: Bitmap, config: WorkflowConfig, command: ApiCommand) {
-        val rect = config.ocrRegion.toPixels(bitmap.width, bitmap.height)
-        val left = rect.left.toInt().coerceIn(0, bitmap.width - 1)
-        val top = rect.top.toInt().coerceIn(0, bitmap.height - 1)
-        val width = rect.width().toInt().coerceIn(1, bitmap.width - left)
-        val height = rect.height().toInt().coerceIn(1, bitmap.height - top)
-        val crop = Bitmap.createBitmap(bitmap, left, top, width, height)
-        bitmap.recycle()
-        OcrEngine.read(crop) { result ->
-            crop.recycle()
-            val text = result.getOrNull()
-            if (text == null) {
-                finish(false, "OCR failed")
-                return@read
-            }
-            if (!Regex(config.expectedTextRegex).containsMatchIn(text)) {
-                finish(false, "OCR condition did not match")
-                return@read
-            }
-            if (!isTargetActive(config)) {
-                finish(false, "Target app changed before input")
-                return@read
-            }
-            tap(config.inputPoint) { inputTapped ->
-                if (!inputTapped) {
-                    finish(false, "Input tap was cancelled")
-                    return@tap
-                }
-                main.postDelayed({
-                    if (!isTargetActive(config)) {
-                        finish(false, "Target app changed before typing")
-                        return@postDelayed
-                    }
-                    typeFocusedText(command.number) { typed ->
-                        if (!typed || !isTargetActive(config)) {
-                            finish(false, "Number field was not accessible")
-                            return@typeFocusedText
-                        }
-                        main.postDelayed({
-                            if (!isTargetActive(config)) {
-                                finish(false, "Target app changed before final action")
-                            } else {
-                                tap(config.submitPoint) { submitted ->
-                                    finish(submitted, if (submitted) "Workflow completed" else "Final tap was cancelled")
-                                }
-                            }
-                        }, randomDelay(config))
-                    }
-                }, randomDelay(config))
-            }
+    private fun performGesture(action: RemoteAction.Gesture, done: (Boolean) -> Unit) {
+        val foreground = rootInActiveWindow?.packageName?.toString()
+        if (foreground == null || isProtectedPackage(foreground)) {
+            store.appendLog("Blocked gesture on protected screen: ${foreground ?: "unknown"}")
+            done(false)
+            return
         }
-    }
-
-    private fun randomDelay(config: WorkflowConfig): Long =
-        Random.nextLong(config.minDelayMs, config.maxDelayMs + 1)
-
-    private fun tap(point: NormalizedPoint, done: (Boolean) -> Unit) {
         val metrics = resources.displayMetrics
-        val path = Path().apply { moveTo(point.x * metrics.widthPixels, point.y * metrics.heightPixels) }
-        val gesture = GestureDescription.Builder()
-            .addStroke(GestureDescription.StrokeDescription(path, 0, 80))
-            .build()
+        val width = metrics.widthPixels.toFloat()
+        val height = metrics.heightPixels.toFloat()
+        if (action.coordinateSpace !in setOf("normalized", "pixels")) {
+            done(false)
+            return
+        }
+        val gesture = runCatching {
+            GestureDescription.Builder().apply {
+                action.strokes.forEach { stroke ->
+                    val path = Path()
+                    stroke.points.forEachIndexed { index, area ->
+                        val point = randomPoint(area, action.coordinateSpace, width, height)
+                        if (index == 0) path.moveTo(point.first, point.second) else path.lineTo(point.first, point.second)
+                    }
+                    addStroke(GestureDescription.StrokeDescription(path, stroke.startDelayMs, stroke.durationMs.random()))
+                }
+            }.build()
+        }.getOrElse {
+            store.appendLog("Invalid gesture: ${it.message ?: "bad coordinates"}")
+            done(false)
+            return
+        }
         val accepted = dispatchGesture(gesture, object : GestureResultCallback() {
             override fun onCompleted(gestureDescription: GestureDescription?) = done(true)
             override fun onCancelled(gestureDescription: GestureDescription?) = done(false)
@@ -191,40 +145,48 @@ class LogiclickAccessibilityService : AccessibilityService() {
         if (!accepted) done(false)
     }
 
-    private fun setFocusedText(value: String): Boolean {
-        val focused = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
-        if (!focused.isEditable) return false
-        return focused.performAction(
-            AccessibilityNodeInfo.ACTION_SET_TEXT,
-            Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value) }
-        )
-    }
-
-    private fun typeFocusedText(value: String, done: (Boolean) -> Unit) {
-        var length = 1
-        fun typeNext() {
-            if (!setFocusedText(value.substring(0, length))) {
-                done(false)
-                return
-            }
-            if (length == value.length) {
-                done(true)
-                return
-            }
-            length += 1
-            // Bounded pacing keeps UI work serialized and prevents event flooding.
-            main.postDelayed(::typeNext, Random.nextLong(70, 161))
+    private fun randomPoint(area: CoordinateArea, space: String, width: Float, height: Float): Pair<Float, Float> {
+        val scaleX = if (space == "normalized") width else 1f
+        val scaleY = if (space == "normalized") height else 1f
+        if (space == "normalized") {
+            require(area.left >= 0f && area.top >= 0f && area.right <= 1f && area.bottom <= 1f)
+        } else {
+            require(area.left >= 0f && area.top >= 0f && area.right < width && area.bottom < height)
         }
-        typeNext()
+        fun choose(min: Float, max: Float): Float =
+            if (min == max) min else Random.nextDouble(min.toDouble(), max.toDouble()).toFloat()
+        return Pair(choose(area.left, area.right) * scaleX, choose(area.top, area.bottom) * scaleY)
     }
 
-    private fun isTargetActive(config: WorkflowConfig): Boolean =
-        rootInActiveWindow?.packageName?.toString() == config.targetPackage
+    private fun performGlobal(name: String): Boolean {
+        val action = when (name) {
+            "back" -> GLOBAL_ACTION_BACK
+            "home" -> GLOBAL_ACTION_HOME
+            "recents" -> GLOBAL_ACTION_RECENTS
+            "notifications" -> GLOBAL_ACTION_NOTIFICATIONS
+            "quick_settings" -> GLOBAL_ACTION_QUICK_SETTINGS
+            "dismiss_notification_shade" -> GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE
+            else -> return false
+        }
+        return performGlobalAction(action)
+    }
+
+    private fun launchApp(packageName: String): Boolean {
+        if (!packageName.matches(Regex("^[A-Za-z][A-Za-z0-9_.]{2,200}$")) || isProtectedPackage(packageName)) return false
+        val launch = packageManager.getLaunchIntentForPackage(packageName) ?: return false
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return runCatching { startActivity(launch); true }.getOrDefault(false)
+    }
+
+    private fun isProtectedPackage(packageName: String): Boolean = PROTECTED_PACKAGES.any {
+        packageName == it || packageName.startsWith("$it.")
+    }
 
     private fun finish(success: Boolean, message: String) {
         busy = false
         store.appendLog(if (success) message else "Stopped: $message")
         updateArmedNotification()
+        schedulePoll(250)
     }
 
     fun stopAutomation() {
@@ -235,10 +197,9 @@ class LogiclickAccessibilityService : AccessibilityService() {
     }
 
     private fun createNotificationChannel() {
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Armed automation", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Shows when a Logiclick workflow can receive signed commands"
+        getSystemService(NotificationManager::class.java).createNotificationChannel(
+            NotificationChannel(CHANNEL_ID, "Remote control", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Shows whenever Logiclick can receive signed remote-control commands"
                 setShowBadge(false)
             }
         )
@@ -261,16 +222,15 @@ class LogiclickAccessibilityService : AccessibilityService() {
             this, 101, Intent(this, StopAutomationReceiver::class.java).setAction(StopAutomationReceiver.ACTION_STOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val workflowName = store.workflow?.name ?: "workflow"
         val notification = Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle("Logiclick is armed")
-            .setContentText("Waiting for signed commands for $workflowName")
+            .setContentTitle("Logiclick remote control is active")
+            .setContentText("Device ${store.deviceId} is waiting for signed commands")
             .setContentIntent(openIntent)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_SERVICE)
-            .addAction(Notification.Action.Builder(android.R.drawable.ic_media_pause, "Stop", stopIntent).build())
+            .addAction(Notification.Action.Builder(android.R.drawable.ic_media_pause, "STOP", stopIntent).build())
             .build()
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification)
         notificationVisible = true
@@ -282,32 +242,18 @@ class LogiclickAccessibilityService : AccessibilityService() {
         notificationVisible = false
     }
 
-    fun capture(callback: (Result<Bitmap>) -> Unit) {
-        takeScreenshot(Display.DEFAULT_DISPLAY, { runnable -> main.post(runnable) }, object : TakeScreenshotCallback {
-            override fun onSuccess(screenshot: ScreenshotResult) {
-                callback(runCatching { screenshot.toBitmap() })
-            }
-
-            override fun onFailure(errorCode: Int) {
-                callback(Result.failure(IllegalStateException("Screenshot failed: $errorCode")))
-            }
-        })
-    }
-
-    private fun ScreenshotResult.toBitmap(): Bitmap {
-        val buffer: HardwareBuffer = hardwareBuffer
-        return try {
-            val hardware = Bitmap.wrapHardwareBuffer(buffer, colorSpace ?: ColorSpace.get(ColorSpace.Named.SRGB))
-                ?: error("Could not read screenshot buffer")
-            hardware.copy(Bitmap.Config.ARGB_8888, false)
-        } finally {
-            buffer.close()
-        }
-    }
-
     companion object {
-        private const val CHANNEL_ID = "logiclick_armed"
+        private const val CHANNEL_ID = "logiclick_remote_control"
         private const val NOTIFICATION_ID = 1201
+        private val PROTECTED_PACKAGES = setOf(
+            "android",
+            "com.android.settings",
+            "com.android.permissioncontroller",
+            "com.android.packageinstaller",
+            "com.google.android.packageinstaller",
+            "com.google.android.permissioncontroller"
+        )
+
         @Volatile var instance: LogiclickAccessibilityService? = null
             private set
     }

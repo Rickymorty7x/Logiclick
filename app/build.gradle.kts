@@ -11,8 +11,10 @@ android {
         applicationId = "com.logiclick.app"
         minSdk = 30
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.2.1"
+        versionCode = 5
+        versionName = "0.4.0"
+        buildConfigField("String", "DEFAULT_API_URL", "\"http://100.93.193.74:8765\"")
+        buildConfigField("String", "DEFAULT_PUBLIC_KEY", "\"MCowBQYDK2VwAyEAxV7g7UKG5SI9IhK58Z8UIfIQAMokhsJ9hx8NQpYK/0o=\"")
     }
 
     buildFeatures {
@@ -27,9 +29,4 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
-}
-
-dependencies {
-    implementation("androidx.core:core-ktx:1.17.0")
-    implementation("com.google.mlkit:text-recognition:16.0.1")
 }

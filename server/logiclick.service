@@ -1,0 +1,19 @@
+[Unit]
+Description=Logiclick signed Android gesture API
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/logiclick-api
+EnvironmentFile=%h/.config/logiclick/environment
+ExecStart=/usr/bin/python3 %h/logiclick-api/logiclick_server.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/share/logiclick
+
+[Install]
+WantedBy=default.target

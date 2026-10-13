@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#090b10">
+  <title>Logiclick Controller</title>
+  <meta name="description" content="Private human and AI-assisted control plane for Logiclick Android devices.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">L</span><span>LOGICLICK</span><small>CONTROL PLANE</small></div>
+      <div class="status-row">
+        <span class="status-dot" id="connectionDot"></span>
+        <span id="connectionLabel">Disconnected</span>
+        <span class="divider"></span>
+        <span id="frameAge">No frame</span>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="sidebar panel">
+        <section>
+          <p class="eyebrow">GATEWAY</p>
+          <label>API base URL<input id="apiBase" type="url" spellcheck="false"></label>
+          <label>Device ID<input id="deviceId" value="phone-1" spellcheck="false"></label>
+          <label>Admin bearer token<input id="adminToken" type="password" autocomplete="off" placeholder="Kept only in this browser tab"></label>
+          <button class="button primary" id="connectButton">Connect to device</button>
+          <p class="microcopy">The token is kept in memory and is cleared when this tab closes.</p>
+        </section>
+
+        <section>
+          <p class="eyebrow">SYSTEM ACTIONS</p>
+          <div class="action-grid">
+            <button class="icon-button" data-global="back"><span>←</span>Back</button>
+            <button class="icon-button" data-global="home"><span>⌂</span>Home</button>
+            <button class="icon-button" data-global="recents"><span>▣</span>Recents</button>
+            <button class="icon-button" data-global="notifications"><span>◉</span>Shade</button>
+          </div>
+        </section>
+
+        <section>
+          <p class="eyebrow">GESTURE SETTINGS</p>
+          <label>Tap target radius <output id="radiusValue">1.0%</output><input id="tapRadius" type="range" min="0" max="4" value="1" step="0.25"></label>
+          <label>Drag duration <output id="durationValue">420 ms</output><input id="dragDuration" type="range" min="100" max="1800" value="420" step="20"></label>
+        </section>
+      </aside>
+
+      <section class="device-column">
+        <div class="device-toolbar panel">
+          <div><p class="eyebrow">LIVE DEVICE</p><h1 id="deviceTitle">phone-1</h1></div>
+          <div class="toolbar-actions">
+            <button class="button ghost" id="refreshButton">Refresh frame</button>
+            <label class="toggle"><input id="liveRefresh" type="checkbox" checked><span></span>Live</label>
+          </div>
+        </div>
+
+        <div class="phone-stage panel" id="phoneStage">
+          <div class="phone-frame">
+            <div class="phone-camera"></div>
+            <div class="screen" id="screen">
+              <img id="screenImage" alt="Mirrored Android screen">
+              <div class="screen-empty" id="screenEmpty">
+                <span class="scan-icon"></span>
+                <strong>Waiting for the phone</strong>
+                <p>Enable “Send screen mirror” in the Android app, then connect.</p>
+              </div>
+              <div class="gesture-line" id="gestureLine"></div>
+              <div class="tap-marker" id="tapMarker"></div>
+            </div>
+          </div>
+          <p class="stage-help">Click to tap · drag to swipe · coordinates are normalized to the phone screen</p>
+        </div>
+      </section>
+
+      <aside class="intelligence panel">
+        <section>
+          <div class="section-heading"><div><p class="eyebrow">INTELLIGENCE</p><h2>Propose next action</h2></div><span class="ai-badge">AI</span></div>
+          <label>Goal<textarea id="goal" rows="5" placeholder="Example: Open YouTube and search for a cooking tutorial"></textarea></label>
+          <label class="toggle approval"><input id="requireApproval" type="checkbox" checked><span></span>Require human approval</label>
+          <button class="button ai" id="proposeButton">Analyze current frame</button>
+          <p class="microcopy">The intelligence endpoint receives the current JPEG and may return one validated gesture. Manual approval is on by default.</p>
+        </section>
+
+        <section class="proposal" id="proposalPanel" hidden>
+          <p class="eyebrow">PROPOSED ACTION</p>
+          <div class="confidence"><span>Confidence</span><strong id="confidence">—</strong></div>
+          <p id="rationale"></p>
+          <pre id="proposalJson"></pre>
+          <div class="proposal-actions">
+            <button class="button primary" id="approveButton">Approve &amp; execute</button>
+            <button class="button ghost" id="rejectButton">Reject</button>
+          </div>
+        </section>
+
+        <section class="activity-section">
+          <div class="section-heading"><p class="eyebrow">ACTIVITY</p><button class="text-button" id="clearLog">Clear</button></div>
+          <ol class="activity" id="activity"></ol>
+        </section>
+      </aside>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="app.js"></script>
+</body>
+</html>

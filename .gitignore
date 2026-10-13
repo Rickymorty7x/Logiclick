@@ -5,3 +5,5 @@ local.properties
 *.iml
 captures/
 dist/
+!controller-web/dist/
+!controller-web/dist/**

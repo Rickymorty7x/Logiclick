@@ -3,12 +3,16 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <queries>
-        <!-- Supported GoPass variants. Package visibility is intentionally narrow. -->
-        <package android:name="dk.unwire.projects.dart" />
-        <package android:name="com.kubo.go_pass" />
-        <package android:name="gopass.travel.mobile" />
+        <!-- Allows launch_app to resolve user-launchable apps by package name. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
     <application
@@ -16,11 +20,7 @@
         android:label="Logiclick"
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
-        android:usesCleartextTraffic="false">
-
-        <activity
-            android:name=".ui.SetupActivity"
-            android:exported="false" />
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".MainActivity"
@@ -34,6 +34,21 @@
         <receiver
             android:name=".automation.StopAutomationReceiver"
             android:exported="false" />
+
+        <receiver
+            android:name=".mirror.MirrorBootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".mirror.MirrorService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection"
+            android:stopWithTask="false" />
 
         <service
             android:name=".automation.LogiclickAccessibilityService"

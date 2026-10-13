@@ -322,6 +322,14 @@ The verified Android 0.4.0 debug APK is attached to the [GitHub v0.4.0 release](
 a56aa31e88af37fcf1bb69fe7dd689535e84e89a9edd38253fcc8e2230098f6d
 ```
 
+Repository QR:
+
+![Logiclick GitHub repository QR code](docs/logiclick-github-qr.png)
+
+Direct APK download QR (GitHub login is required because the repository is private):
+
+![Logiclick Android APK QR code](docs/logiclick-apk-qr.png)
+
 Open this project in current Android Studio with Android SDK 36 and JDK 17, then build the `app` debug or release APK. The minimum supported Android version is Android 11 (API 30).
 
 After installation:

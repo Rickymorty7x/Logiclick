@@ -7,6 +7,7 @@
   <title>Logiclick Controller</title>
   <meta name="description" content="Private human and AI-assisted control plane for Logiclick Android devices.">
   <link rel="stylesheet" href="styles.css">
+  <style>[hidden]{display:none!important}.direct-controller{display:block;margin:0 0 14px;padding:12px 14px;border:1px solid rgba(77,230,181,.35);border-radius:9px;background:rgba(77,230,181,.08);color:#4de6b5;font-size:12px;font-weight:700;line-height:1.4;text-decoration:none}.direct-controller:hover{background:rgba(77,230,181,.14)}</style>
 </head>
 <body>
   <div class="shell">
@@ -24,11 +25,18 @@
       <aside class="sidebar panel">
         <section>
           <p class="eyebrow">GATEWAY</p>
-          <label>API base URL<input id="apiBase" type="url" spellcheck="false"></label>
+          <a class="direct-controller" id="directControllerLink" href="http://100.93.193.74:8765/controller/">Open the zero-setup Pi controller →</a>
+          <label id="apiBaseLabel">API base URL<input id="apiBase" type="url" spellcheck="false"></label>
           <label>Device ID<input id="deviceId" value="phone-1" spellcheck="false"></label>
-          <label>Admin bearer token<input id="adminToken" type="password" autocomplete="off" placeholder="Kept only in this browser tab"></label>
+          <label id="tokenLabel">Admin bearer token
+            <span class="token-row">
+              <input id="adminToken" type="password" autocomplete="off" placeholder="Kept only in this browser tab">
+              <button class="paste-button" id="pasteTokenButton" type="button" title="Paste from clipboard">Paste token</button>
+            </span>
+          </label>
           <button class="button primary" id="connectButton">Connect to device</button>
-          <p class="microcopy">The token is kept in memory and is cleared when this tab closes.</p>
+          <p class="microcopy" id="tokenHelp">The token is kept in memory and is cleared when this tab closes. Shortcut: <kbd>⌘/Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>V</kbd> pastes it and connects.</p>
+          <p class="microcopy" id="directModeNote" hidden>Direct mode is active. This page connects automatically with a temporary Pi session.</p>
         </section>
 
         <section>

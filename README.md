@@ -38,9 +38,11 @@ Open the controller from a Tailnet-connected browser:
 http://100.93.193.74:8765/controller/
 ```
 
-A private hosted copy is also deployed at [logiclick-controller.ritikyadav7x.chatgpt.site](https://logiclick-controller.ritikyadav7x.chatgpt.site). Because that page is HTTPS, enable Tailscale Serve before connecting it to the Pi; the Pi-hosted `/controller/` URL works immediately inside the Tailnet.
+This is the easiest daily-use path: the Pi-hosted page automatically creates a temporary in-memory controller session and connects to `phone-1`. There is no admin token to copy or paste. The session changes whenever the Pi service restarts and is issued only to the same-origin `/controller/` page.
 
-The service binds only to the Pi's Tailscale address, so the endpoint is available only to devices connected to the same Tailscale network. The `http://` application traffic still travels inside Tailscale's encrypted WireGuard tunnel. The Android app accepts cleartext HTTP only for Tailscale's `100.64.0.0/10` range; all other endpoints must use HTTPS. Every submit request requires the admin bearer token. The Android polling endpoint uses a separate device bearer token. Both tokens are stored only on the Pi in `~/.config/logiclick/environment` with mode `0600`.
+A private hosted launcher is also deployed at [logiclick-controller.ritikyadav7x.chatgpt.site](https://logiclick-controller.ritikyadav7x.chatgpt.site). Select **Open the zero-setup Pi controller** there. Your browser must be connected to the same Tailscale network as the Pi.
+
+The service binds only to the Pi's Tailscale address, so the endpoint is available only to devices connected to the same Tailscale network. The `http://` application traffic still travels inside Tailscale's encrypted WireGuard tunnel. The Android app accepts cleartext HTTP only for Tailscale's `100.64.0.0/10` range; all other endpoints must use HTTPS. External API clients still submit the admin bearer token. The Pi controller uses its temporary local session instead. The Android polling endpoint uses a separate device bearer token. Permanent tokens are stored only on the Pi in `~/.config/logiclick/environment` with mode `0600`.
 
 Tailscale Serve is not yet enabled for this Tailnet. After the Tailnet owner enables it once, run `tailscale serve --bg --yes 8765` on the Pi and switch the API base URL to `https://ricky.dusky-parore.ts.net`.
 
@@ -106,7 +108,9 @@ Authorization: Bearer YOUR_ADMIN_TOKEN
 
 ## Web controller
 
-Open `/controller/`, enter the admin token, and select **Connect to device**. Clicking the displayed phone sends a normalized `tap`; dragging sends a normalized `drag`. The Back, Home, Recents, and notification-shade buttons send global Android actions. The admin token stays only in the current browser tab and is not written to browser storage.
+Open `http://100.93.193.74:8765/controller/`. It connects automatically—no token or setup form is required. Clicking the displayed phone sends a normalized `tap`; dragging sends a normalized `drag`. The Back, Home, Recents, and notification-shade buttons send global Android actions.
+
+`GET /v1/controller/session` is an internal bootstrap route for the Pi-hosted page. It accepts only a same-origin request coming from `/controller/`, and the returned session exists only in server memory. It is not a replacement for the admin token in scripts or other API clients.
 
 The Pi-hosted HTTP controller works immediately inside the encrypted Tailnet. A separately hosted HTTPS controller must use the Pi's HTTPS Tailscale Serve address because browsers block HTTPS pages from fetching an HTTP API. After enabling Tailscale Serve, use `https://ricky.dusky-parore.ts.net` as the controller's API base URL.
 

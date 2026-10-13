@@ -39,6 +39,7 @@ PORT = int(os.environ.get("LOGICLICK_PORT", "8765"))
 ALLOWED_ORIGIN = os.environ.get("LOGICLICK_ALLOWED_ORIGIN", "*")
 INTELLIGENCE_URL = os.environ.get("LOGICLICK_INTELLIGENCE_URL", "")
 INTELLIGENCE_TOKEN = os.environ.get("LOGICLICK_INTELLIGENCE_TOKEN", "")
+TRUST_LOCAL_CONTROLLER = os.environ.get("LOGICLICK_TRUST_LOCAL_CONTROLLER", "0").lower() in {"1", "true", "yes"}
 ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 PACKAGE_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_.]{2,200}$")
 PROTECTED_PACKAGES = (
@@ -247,6 +248,24 @@ class LogiclickHandler(BaseHTTPRequestHandler):
         supplied = self.headers.get("Authorization", "")
         return supplied.startswith("Bearer ") and hmac.compare_digest(supplied[7:], expected)
 
+    def admin_matches(self) -> bool:
+        return self.bearer_matches(ADMIN_TOKEN) or (
+            TRUST_LOCAL_CONTROLLER and self.bearer_matches(self.server.controller_session_token)
+        )
+
+    def is_same_origin_controller(self) -> bool:
+        if not TRUST_LOCAL_CONTROLLER:
+            return False
+        host = self.headers.get("Host", "")
+        if not host:
+            return False
+        allowed_origins = {f"http://{host}", f"https://{host}"}
+        origin = self.headers.get("Origin", "")
+        if origin:
+            return origin in allowed_origins
+        referer = self.headers.get("Referer", "")
+        return any(referer.startswith(f"{allowed}/controller/") for allowed in allowed_origins)
+
     def read_json(self) -> object:
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -277,6 +296,12 @@ class LogiclickHandler(BaseHTTPRequestHandler):
         if path == "/v1/health":
             self.send_json(HTTPStatus.OK, {"ok": True, "service": "logiclick", "version": "0.4"})
             return
+        if path == "/v1/controller/session":
+            if not self.is_same_origin_controller():
+                self.send_json(HTTPStatus.FORBIDDEN, {"error": "Open the controller from this Pi first"})
+                return
+            self.send_json(HTTPStatus.OK, {"token": self.server.controller_session_token})
+            return
         if path == "/v1/public-key":
             self.send_json(HTTPStatus.OK, {"algorithm": "Ed25519", "publicKeyBase64": self.server.public_key})
             return
@@ -299,7 +324,7 @@ class LogiclickHandler(BaseHTTPRequestHandler):
             return
         match = re.fullmatch(r"/v1/devices/([^/]+)/mirror/(latest|status)", path)
         if match:
-            if not self.bearer_matches(ADMIN_TOKEN):
+            if not self.admin_matches():
                 self.send_json(HTTPStatus.UNAUTHORIZED, {"error": "Unauthorized"})
                 return
             device = unquote(match.group(1))
@@ -350,7 +375,7 @@ class LogiclickHandler(BaseHTTPRequestHandler):
 
         intelligence_match = re.fullmatch(r"/v1/devices/([^/]+)/intelligence/propose", path)
         if intelligence_match:
-            if not self.bearer_matches(ADMIN_TOKEN):
+            if not self.admin_matches():
                 self.send_json(HTTPStatus.UNAUTHORIZED, {"error": "Unauthorized"})
                 return
             device = unquote(intelligence_match.group(1))
@@ -408,7 +433,7 @@ class LogiclickHandler(BaseHTTPRequestHandler):
         if not match:
             self.send_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
             return
-        if not self.bearer_matches(ADMIN_TOKEN):
+        if not self.admin_matches():
             self.send_json(HTTPStatus.UNAUTHORIZED, {"error": "Unauthorized"})
             return
         device = unquote(match.group(1))
@@ -441,6 +466,7 @@ class LogiclickServer(ThreadingHTTPServer):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         self.private_key = load_private_key()
         self.public_key = public_key_base64(self.private_key)
+        self.controller_session_token = secrets.token_urlsafe(32)
         with database():
             pass
         super().__init__(address, LogiclickHandler)
